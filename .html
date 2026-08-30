@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>星尘漂流者</title>
+    <style>
+        * {margin:0;padding:0;box-sizing:border-box}
+        body{background:#050518;color:#fff;font-family:system-ui, sans-serif;display:flex;flex-direction:column;align-items:center;padding:10px}
+        canvas{border:1px solid #446;border-radius:8px;background:#020210}
+        #info{margin-bottom:8px}
+    </style>
+</head>
+<body>
+<div id="info">护盾:<span id="shield">100</span>｜星尘:<span id="stardust">0</span>｜需收集:<span id="need">0</span>｜关卡:<span id="level">1</span></div>
+<canvas id="game" width="800" height="500"></canvas>
+<!--游戏提示：蓝色=星尘(收集)，棕色=陨石(躲避)，红色是禁止进入区域-->
+<div style="margin-top:8px">操作：方向键移动｜空格加速<br>🔵蓝色星尘(收集)｜🟤棕色陨石(躲避)｜🔴红色禁止进入风暴区｜集齐星尘传送门变绿色通关<br>总共5关，通关第5关获得胜利</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const shieldEl = document.getElementById("shield");
+const stardustEl = document.getElementById("stardust");
+const needEl = document.getElementById("need");
+const levelEl = document.getElementById("level");
+
+//飞船
+const ship = {
+    x: 100,
+    y: 250,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    shield: 100,
+    stardust: 0,
+    level: 1,
+    maxLevel:5, //总共5关
+    speed: 0.18,
+    boostSpeed: 0.38,
+    width: 24,
+    height: 32
+};
+
+const keys = {};
+window.addEventListener("keydown",e=>{keys[e.code]=true})
+window.addEventListener("keyup",e=>{keys[e.code]=false})
+
+let stardustList = [];
+let meteors = [];
+let storms = [];
+let portal = null;
+let gameOver = false;
+let gameWin = false;
+
+//生成关卡
+function spawnLevel(lv){
+    stardustList=[];meteors=[];storms=[];portal=null;
+    ship.x=80; ship.y=250; ship.vx=0;ship.vy=0;
+    ship.shield=100; ship.stardust=0; gameOver=false;gameWin=false;
+
+    const need = 8+lv*3;
+    for(let i=0;i<need+6;i++){
+        stardustList.push({
+            x:120+Math.random()*620,
+            y:20+Math.random()*460,
+            r:4+Math.random()*3
+        })
+    }
+    //陨石数量随关卡增加
+    const mCnt = 3+lv*2;
+    for(let i=0;i<mCnt;i++){
+        meteors.push({
+            x:220+Math.random()*550,
+            y:Math.random()*500,
+            r:6+Math.random()*12,
+            vx:-0.4-Math.random()*1.2,
+            vy:(Math.random()-0.5)*0.8
+        })
+    }
+    //风暴数量随关卡增加
+    const sCnt = Math.min(lv,4);
+    for(let i=0;i<sCnt;i++){
+        storms.push({
+            x:250+Math.random()*450,
+            y:20+Math.random()*400,
+            w:60+Math.random()*80,
+            h:60+Math.random()*80
+        })
+    }
+    portal = {x:730,y:250,r:22};
+}
+
+function dist(a,b){
+    const dx=a.x-b.x; const dy=a.y-b.y;
+    return Math.sqrt(dx*dx+dy*dy);
+}
+
+function loop(){
+    if(!gameOver && !gameWin){
+        const spd = keys["Space"] ? ship.boostSpeed : ship.speed;
+        if (keys["ArrowUp"]) ship.vy -= spd;
+        if (keys["ArrowDown"]) ship.vy += spd;
+        if (keys["ArrowLeft"]) ship.vx -= spd;
+        if (keys["ArrowRight"]) ship.vx += spd;
+
+        ship.vx *= 0.96;
+        ship.vy *= 0.96;
+        ship.x += ship.vx;
+        ship.y += ship.vy;
+
+        ship.angle = Math.atan2(ship.vy, ship.vx);
+
+        ship.x = Math.max(12, Math.min(788, ship.x));
+        ship.y = Math.max(12, Math.min(488, ship.y));
+
+        //收集星尘
+        for(let i=stardustList.length-1;i>=0;i--){
+            const s = stardustList[i];
+            if(dist(ship,s)<14+s.r){
+                stardustList.splice(i,1);
+                ship.stardust+=1;
+            }
+        }
+
+        //陨石
+        for(let i=meteors.length-1;i>=0;i--){
+            const m = meteors[i];
+            m.x += m.vx; m.y += m.vy;
+            if(m.x<-30){
+                m.x=820; m.y=Math.random()*500;
+            }
+            if(dist(ship,m)<12+m.r){
+                ship.shield -=14;
+                meteors.splice(i,1);
+            }
+        }
+
+        //风暴扣血
+        for(const s of storms){
+            if(ship.x>s.x&&ship.x<s.x+s.w&&ship.y>s.y&&ship.y<s.y+s.h){
+                ship.shield-=0.35;
+            }
+        }
+
+        const needDust = 8+ship.level*3;
+        if(ship.stardust>=needDust && dist(ship,portal)<portal.r){
+            if(ship.level >= ship.maxLevel){
+                gameWin = true;
+            }else{
+                ship.level++;
+                spawnLevel(ship.level);
+            }
+        }
+
+        if(ship.shield<=0){
+            gameOver=true;
+        }
+    }
+
+    //绘制
+    ctx.fillStyle="#020210";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle="rgba(180,30,60,0.22)";
+    for(const s of storms){
+        ctx.fillRect(s.x,s.y,s.w,s.h);
+    }
+
+    //蓝色星尘
+    for(const s of stardustList){
+        ctx.beginPath();
+        ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+        ctx.fillStyle="#44aaff";
+        ctx.fill();
+    }
+
+    //棕色陨石
+    ctx.fillStyle="#8b572a";
+    for(const m of meteors){
+        ctx.beginPath();
+        ctx.arc(m.x,m.y,m.r,0,Math.PI*2);
+        ctx.fill();
+    }
+
+    const needDust = 8+ship.level*3;
+    ctx.beginPath();
+    ctx.arc(portal.x,portal.y,portal.r,0,Math.PI*2);
+    ctx.fillStyle = ship.stardust>=needDust ? "#4ff297":"#224433";
+    ctx.fill();
+
+    //绘制飞船
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.angle + Math.PI / 2);
+
+    if (keys["ArrowUp"] || keys["ArrowDown"] || keys["ArrowLeft"] || keys["ArrowRight"]) {
+        ctx.beginPath();
+        ctx.moveTo(-6, 14);
+        ctx.lineTo(0, 24 + Math.random() * 8);
+        ctx.lineTo(6, 14);
+        ctx.closePath();
+        ctx.fillStyle = keys["Space"] ? "#ff5500" : "#ffcc00";
+        ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(0, -16);
+    ctx.lineTo(-10, 12);
+    ctx.lineTo(-4, 10);
+    ctx.lineTo(0, 14);
+    ctx.lineTo(4, 10);
+    ctx.lineTo(10, 12);
+    ctx.closePath();
+    ctx.fillStyle = "#ddeeff";
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, -4, 5, 0, Math.PI * 2);
+    ctx.fillStyle = "#88ccff";
+    ctx.fill();
+
+    ctx.fillStyle = "#aabbcc";
+    ctx.fillRect(-12, 6, 4, 8);
+    ctx.fillRect(8, 6, 4, 8);
+    ctx.restore();
+
+    shieldEl.textContent = Math.max(0,Math.round(ship.shield));
+    stardustEl.textContent = ship.stardust;
+    needEl.textContent = needDust;
+    levelEl.textContent = ship.level;
+
+    if(gameOver){
+        ctx.fillStyle="#ff4455";
+        ctx.font="28px sans-serif";
+        ctx.textAlign="center";
+        ctx.fillText("飞船损毁！刷新页面重新开始",canvas.width/2,canvas.height/2);
+    }
+    if(gameWin){
+        ctx.fillStyle="#4ff297";
+        ctx.font="32px sans-serif";
+        ctx.textAlign="center";
+        ctx.fillText("🎉恭喜通关全部5关！",canvas.width/2,canvas.height/2);
+    }
+
+    requestAnimationFrame(loop);
+}
+
+spawnLevel(ship.level);
+loop();
+</script>
+</body>
+</html>
+
+
+
